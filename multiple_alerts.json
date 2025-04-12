@@ -1,0 +1,58 @@
+{
+  "receiver": "webhook-default",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "High CPU Usage",
+        "instance": "server01.example.com",
+        "job": "node_exporter",
+        "severity": "critical",
+        "phoneNumbers": "123456789",
+        "message": "[ERROR] Sample message over 160 characters"
+      },
+      "annotations": {
+        "summary": "High CPU usage detected on server01",
+        "description": "CPU usage on instance {{ $labels.instance }} is above 90%. Current value: {{ $value }}%",
+        "value": "95.2"
+      },
+      "startsAt": "2023-10-27T10:30:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://grafana.local/alerting/rule/1?tab=details",
+      "fingerprint": "a1b2c3d4e5f6"
+    },
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "Low Disk Space",
+        "instance": "server02.example.com",
+        "job": "node_exporter",
+        "mountpoint": "/data",
+        "severity": "warning",
+        "phoneNumbers": ["987654321", "111222333"],
+        "message": "[ERROR] Sample message over 160 characters"
+      },
+      "annotations": {
+        "summary": "Low disk space on server02:/data",
+        "description": "Disk space on {{ $labels.instance }} mount point {{ $labels.mountpoint }} is below 10%. Current value: {{ $value }}%",
+        "value": "8.5"
+      },
+      "startsAt": "2023-10-27T10:32:15Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://grafana.local/alerting/rule/2?tab=details",
+      "fingerprint": "f6e5d4c3b2a1"
+    }
+  ],
+  "groupLabels": {
+    "job": "node_exporter"
+  },
+  "commonLabels": {
+    "job": "node_exporter"
+  },
+  "commonAnnotations": {},
+  "externalURL": "http://alertmanager.local",
+  "version": "4",
+  "groupKey": "{}:{job=\"node_exporter\"}",
+  "truncatedAlerts": 0
+} 

@@ -1,0 +1,39 @@
+{
+  "receiver": "webhook-default",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "High CPU Usage",
+        "instance": "server01.example.com",
+        "job": "node_exporter",
+        "severity": "critical"
+      },
+      "annotations": {
+        "summary": "High CPU usage detected on server01",
+        "description": "CPU usage on instance {{ $labels.instance }} is above 90%. Current value: {{ $value }}%",
+        "value": "95.2"
+      },
+      "startsAt": "2023-10-27T10:30:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://grafana.local/alerting/rule/1?tab=details",
+      "fingerprint": "a1b2c3d4e5f6"
+    }
+  ],
+  "groupLabels": {
+    "alertname": "High CPU Usage"
+  },
+  "commonLabels": {
+    "alertname": "High CPU Usage",
+    "job": "node_exporter",
+    "severity": "critical"
+  },
+  "commonAnnotations": {
+    "summary": "High CPU usage detected"
+  },
+  "externalURL": "http://alertmanager.local",
+  "version": "4",
+  "groupKey": "{}:{alertname=\"High CPU Usage\"}",
+  "truncatedAlerts": 0
+} 
