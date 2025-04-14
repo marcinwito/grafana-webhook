@@ -14,6 +14,13 @@ PORT = 5001       # Port the server will listen on
 LOG_FILE = 'webhook.log' # File to write webhook logs
 ACCESS_LOG_FILE = 'access.log' # File to write access logs
 LOG_JSON_BODY = True # Control logging of the full JSON body
+
+# Command configuration
+SYSTEM_COMMAND = ['dir'] # The base command to execute (list of strings)
+SYSTEM_COMMAND_ARGS_ORDER = ['phoneNumbers', 'message'] # Order of args to append: 'phoneNumbers', 'message'
+# Example: SYSTEM_COMMAND = ['/path/to/script.sh']
+# Example: SYSTEM_COMMAND_ARGS_ORDER = ['message', 'phoneNumbers']
+
 # --- End Configuration ---
 
 # --- Main Logging Configuration (Webhooks) ---
@@ -49,24 +56,39 @@ access_stream_handler.setFormatter(access_formatter)
 access_logger.addHandler(access_stream_handler)
 # --- End Access Logging Configuration ---
 
-# Function to run the command in a separate thread
-def run_system_command(phone_numbers, message_content, alert_name):
-    """Runs the system command in a thread to avoid blocking the reactor."""
+# Function to run the command in a separate thread for a single phone number
+def run_system_command(phone_number, message_content, alert_name):
+    """Runs the configured system command in a thread for a single phone number."""
     try:
-        # Assuming phone_numbers might be a list or single number, handle appropriately
-        # For dir command, just pass it as is for now.
-        command = ['dir', str(phone_numbers), message_content]
-        webhook_logger.info(f"[Thread] Running command for alert '{alert_name}': {command}")
-        result = subprocess.run(command, capture_output=True, text=True, check=False, shell=False)
-        webhook_logger.info(f"[Thread] Command for alert '{alert_name}' finished with exit code: {result.returncode}")
+        # Build the command dynamically based on configuration
+        command_base = list(SYSTEM_COMMAND) # Start with a copy of the base command
+        # Map now uses the single phone_number argument
+        args_map = {
+            'phoneNumbers': phone_number, # Use the single number passed
+            'message': message_content
+        }
+
+        final_command = command_base
+        for arg_key in SYSTEM_COMMAND_ARGS_ORDER:
+            if arg_key in args_map:
+                # Ensure the argument is converted to string
+                final_command.append(str(args_map[arg_key]))
+            else:
+                webhook_logger.warning(f"[Thread] Configured argument key '{arg_key}' not found in available data for alert '{alert_name}'. Skipping.")
+
+        webhook_logger.info(f"[Thread] Running command for alert '{alert_name}' (Number: {phone_number}): {final_command}")
+        result = subprocess.run(final_command, capture_output=True, text=True, check=False, shell=False)
+
+        webhook_logger.info(f"[Thread] Command for alert '{alert_name}' (Number: {phone_number}) finished with exit code: {result.returncode}")
         if result.stdout:
             webhook_logger.info(f"[Thread] Command stdout:\n{result.stdout.strip()}")
         if result.stderr:
             webhook_logger.warning(f"[Thread] Command stderr:\n{result.stderr.strip()}")
+
     except FileNotFoundError:
-            webhook_logger.error(f"[Thread] Error running command for alert '{alert_name}': 'dir' command not found.")
+            webhook_logger.error(f"[Thread] Error running command for alert '{alert_name}': Command '{SYSTEM_COMMAND[0]}' not found. Make sure it's in the system PATH.")
     except Exception as cmd_err:
-        webhook_logger.error(f"[Thread] Error executing command for alert '{alert_name}': {cmd_err}")
+        webhook_logger.error(f"[Thread] Error executing command for alert '{alert_name}' (Number: {phone_number}): {cmd_err}")
 
 # Initialize Klein application
 app = Klein()
@@ -101,23 +123,33 @@ def grafana_webhook(request: Request):
                     for i, alert in enumerate(data['alerts']):
                         alert_name = alert.get('labels', {}).get('alertname', f'alert_{i+1}')
                         labels = alert.get('labels', {})
-                        # Get the new label name
-                        phone_numbers_val = labels.get('phoneNumbers')
-                        message_content = labels.get('message')
+                        annotations = alert.get('annotations', {})
 
-                        # Check for the new label name
-                        if phone_numbers_val and message_content:
-                            webhook_logger.info(f"Alert '{alert_name}': Found phoneNumbers and message. Scheduling command execution.")
-                            d = threads.deferToThread(run_system_command, phone_numbers_val, message_content, alert_name)
-                            d.addErrback(lambda f: webhook_logger.error(f"Error in thread execution: {f.value}"))
+                        phone_numbers_val = labels.get('phoneNumbers')
+                        message_content = annotations.get('message')
+
+                        # Check if both base values exist
+                        if phone_numbers_val is not None and message_content:
+                            # Ensure phone_numbers_val is a list
+                            if not isinstance(phone_numbers_val, list):
+                                phone_numbers_list = [phone_numbers_val]
+                            else:
+                                phone_numbers_list = phone_numbers_val
+
+                            webhook_logger.info(f"Alert '{alert_name}': Found phoneNumbers (label: {phone_numbers_list}) and message (annotation). Scheduling command execution for each number.")
+
+                            # Iterate through each phone number and schedule a command
+                            for single_phone_number in phone_numbers_list:
+                                webhook_logger.info(f"  - Scheduling for number: {single_phone_number}")
+                                d = threads.deferToThread(run_system_command, single_phone_number, message_content, alert_name)
+                                d.addErrback(lambda f, num=single_phone_number: webhook_logger.error(f"Error in thread execution for number {num}: {f.value}"))
                         else:
-                            missing_labels = []
-                            # Check for the new label name
-                            if not phone_numbers_val:
-                                missing_labels.append('phoneNumbers')
+                            missing = []
+                            if phone_numbers_val is None: # Check for None explicitly
+                                missing.append('phoneNumbers label')
                             if not message_content:
-                                missing_labels.append('message')
-                            webhook_logger.info(f"Alert '{alert_name}': Missing required labels: {', '.join(missing_labels)}. Skipping command execution.")
+                                missing.append('message annotation')
+                            webhook_logger.info(f"Alert '{alert_name}': Missing required fields: {', '.join(missing)}. Skipping command execution.")
                 else:
                     webhook_logger.info("Webhook JSON does not contain an 'alerts' list.")
                 # --- End Check alerts ---
@@ -172,7 +204,8 @@ def grafana_webhook(request: Request):
 if __name__ == '__main__':
     access_logger.info(f"Starting webhook server (Klein) on {HOST}:{PORT} with TCP Keepalives enabled")
     webhook_logger.info(f"Server configured to listen on {HOST}:{PORT}, webhook logs in {LOG_FILE}")
-    webhook_logger.info(f"Log full JSON body: {LOG_JSON_BODY}") # Log the state of the new flag
+    webhook_logger.info(f"Log full JSON body: {LOG_JSON_BODY}")
+    webhook_logger.info(f"System command configured: {SYSTEM_COMMAND} with args order: {SYSTEM_COMMAND_ARGS_ORDER}") # Log command config
 
     # Get the Klein app resource
     resource = app.resource()

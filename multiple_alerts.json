@@ -9,13 +9,13 @@
         "instance": "server01.example.com",
         "job": "node_exporter",
         "severity": "critical",
-        "phoneNumbers": "123456789",
-        "message": "[ERROR] Sample message over 160 characters"
+        "phoneNumbers": "123456789"
       },
       "annotations": {
         "summary": "High CPU usage detected on server01",
         "description": "CPU usage on instance {{ $labels.instance }} is above 90%. Current value: {{ $value }}%",
-        "value": "95.2"
+        "value": "95.2",
+        "message": "CPU is too high on server01!"
       },
       "startsAt": "2023-10-27T10:30:00Z",
       "endsAt": "0001-01-01T00:00:00Z",
@@ -30,13 +30,13 @@
         "job": "node_exporter",
         "mountpoint": "/data",
         "severity": "warning",
-        "phoneNumbers": ["987654321", "111222333"],
-        "message": "[ERROR] Sample message over 160 characters"
+        "phoneNumbers": ["987654321", "111222333"]
       },
       "annotations": {
         "summary": "Low disk space on server02:/data",
         "description": "Disk space on {{ $labels.instance }} mount point {{ $labels.mountpoint }} is below 10%. Current value: {{ $value }}%",
-        "value": "8.5"
+        "value": "8.5",
+        "message": "Disk space low on server02 /data partition."
       },
       "startsAt": "2023-10-27T10:32:15Z",
       "endsAt": "0001-01-01T00:00:00Z",
