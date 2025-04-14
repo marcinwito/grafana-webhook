@@ -9,8 +9,8 @@ import subprocess # Import subprocess module
 from twisted.internet import reactor, threads
 
 # --- Configuration ---
-HOST = '0.0.0.0'  # Listen on all interfaces
-PORT = 5001       # Port the server will listen on
+HOST = '127.0.0.1'  # Listen on all interfaces
+PORT = 9123       # Port the server will listen on
 LOG_FILE = 'webhook.log' # File to write webhook logs
 ACCESS_LOG_FILE = 'access.log' # File to write access logs
 LOG_JSON_BODY = True # Control logging of the full JSON body
@@ -130,22 +130,38 @@ def grafana_webhook(request: Request):
 
                         # Check if both base values exist
                         if phone_numbers_val is not None and message_content:
-                            # Ensure phone_numbers_val is a list
-                            if not isinstance(phone_numbers_val, list):
-                                phone_numbers_list = [phone_numbers_val]
-                            else:
+                            phone_numbers_list = []
+                            # Handle different formats for phoneNumbers label
+                            if isinstance(phone_numbers_val, str):
+                                # Split comma-separated string and strip whitespace
+                                phone_numbers_list = [num.strip() for num in phone_numbers_val.split(',') if num.strip()]
+                            elif isinstance(phone_numbers_val, list):
+                                # It's already a list (e.g., from JSON array)
                                 phone_numbers_list = phone_numbers_val
+                            else:
+                                # Treat other non-None types as a single number list
+                                phone_numbers_list = [phone_numbers_val]
 
-                            webhook_logger.info(f"Alert '{alert_name}': Found phoneNumbers (label: {phone_numbers_list}) and message (annotation). Scheduling command execution for each number.")
+                            if not phone_numbers_list:
+                                webhook_logger.warning(f"Alert '{alert_name}': phoneNumbers label found but resulted in an empty list after processing ('{phone_numbers_val}'). Skipping command execution.")
+                                continue # Skip to the next alert
+
+                            webhook_logger.info(f"Alert '{alert_name}': Processing phoneNumbers: {phone_numbers_list} and message. Scheduling command execution for each number.")
 
                             # Iterate through each phone number and schedule a command
                             for single_phone_number in phone_numbers_list:
-                                webhook_logger.info(f"  - Scheduling for number: {single_phone_number}")
-                                d = threads.deferToThread(run_system_command, single_phone_number, message_content, alert_name)
-                                d.addErrback(lambda f, num=single_phone_number: webhook_logger.error(f"Error in thread execution for number {num}: {f.value}"))
+                                # Ensure the number is treated as a string for the command
+                                phone_number_str = str(single_phone_number).strip()
+                                if not phone_number_str:
+                                     webhook_logger.warning(f"Alert '{alert_name}': Encountered empty phone number string after processing. Skipping this number.")
+                                     continue
+
+                                webhook_logger.info(f"  - Scheduling for number: {phone_number_str}")
+                                d = threads.deferToThread(run_system_command, phone_number_str, message_content, alert_name)
+                                d.addErrback(lambda f, num=phone_number_str: webhook_logger.error(f"Error in thread execution for number {num}: {f.value}"))
                         else:
                             missing = []
-                            if phone_numbers_val is None: # Check for None explicitly
+                            if phone_numbers_val is None:
                                 missing.append('phoneNumbers label')
                             if not message_content:
                                 missing.append('message annotation')
