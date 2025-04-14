@@ -56,9 +56,9 @@ access_stream_handler.setFormatter(access_formatter)
 access_logger.addHandler(access_stream_handler)
 # --- End Access Logging Configuration ---
 
-# Function to run the command in a separate thread for a single phone number
+# Function to run the command in a separate thread for a single phone number (Python 3.6 compatible)
 def run_system_command(phone_number, message_content, alert_name):
-    """Runs the configured system command in a thread for a single phone number."""
+    """Runs the configured system command in a thread (Python 3.6 compatible)."""
     try:
         # Build the command dynamically based on configuration
         command_base = list(SYSTEM_COMMAND) # Start with a copy of the base command
@@ -77,14 +77,25 @@ def run_system_command(phone_number, message_content, alert_name):
                 webhook_logger.warning(f"[Thread] Configured argument key '{arg_key}' not found in available data for alert '{alert_name}'. Skipping.")
 
         webhook_logger.info(f"[Thread] Running command for alert '{alert_name}' (Number: {phone_number}): {final_command}")
-        # subprocess.run with shell=False handles arguments containing spaces correctly when passed as list items.
-        result = subprocess.run(final_command, capture_output=True, text=True, check=False, shell=False)
 
-        webhook_logger.info(f"[Thread] Command for alert '{alert_name}' (Number: {phone_number}) finished with exit code: {result.returncode}")
-        if result.stdout:
-            webhook_logger.info(f"[Thread] Command stdout:\n{result.stdout.strip()}")
-        if result.stderr:
-            webhook_logger.warning(f"[Thread] Command stderr:\n{result.stderr.strip()}")
+        # Use PIPE for stdout/stderr (Python < 3.7 compatible)
+        process = subprocess.run(
+            final_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            shell=False
+        )
+
+        # Decode stdout and stderr manually
+        stdout_str = process.stdout.decode('utf-8', errors='ignore').strip()
+        stderr_str = process.stderr.decode('utf-8', errors='ignore').strip()
+
+        webhook_logger.info(f"[Thread] Command for alert '{alert_name}' (Number: {phone_number}) finished with exit code: {process.returncode}")
+        if stdout_str:
+            webhook_logger.info(f"[Thread] Command stdout:\n{stdout_str}")
+        if stderr_str:
+            webhook_logger.warning(f"[Thread] Command stderr:\n{stderr_str}")
 
     except FileNotFoundError:
             webhook_logger.error(f"[Thread] Error running command for alert '{alert_name}': Command '{SYSTEM_COMMAND[0]}' not found. Make sure it's in the system PATH.")
