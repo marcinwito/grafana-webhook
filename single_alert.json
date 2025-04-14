@@ -1,39 +1,49 @@
 {
-  "receiver": "webhook-default",
-  "status": "firing",
-  "alerts": [
-    {
-      "status": "firing",
-      "labels": {
-        "alertname": "High CPU Usage",
-        "instance": "server01.example.com",
-        "job": "node_exporter",
-        "severity": "critical"
-      },
-      "annotations": {
-        "summary": "High CPU usage detected on server01",
-        "description": "CPU usage on instance {{ $labels.instance }} is above 90%. Current value: {{ $value }}%",
-        "value": "95.2"
-      },
-      "startsAt": "2023-10-27T10:30:00Z",
-      "endsAt": "0001-01-01T00:00:00Z",
-      "generatorURL": "http://grafana.local/alerting/rule/1?tab=details",
-      "fingerprint": "a1b2c3d4e5f6"
-    }
-  ],
-  "groupLabels": {
-    "alertname": "High CPU Usage"
-  },
-  "commonLabels": {
-    "alertname": "High CPU Usage",
-    "job": "node_exporter",
-    "severity": "critical"
-  },
-  "commonAnnotations": {
-    "summary": "High CPU usage detected"
-  },
-  "externalURL": "http://alertmanager.local",
-  "version": "4",
-  "groupKey": "{}:{alertname=\"High CPU Usage\"}",
-  "truncatedAlerts": 0
-} 
+    "receiver": "test",
+    "status": "firing",
+    "alerts": [
+        {
+            "status": "firing",
+            "labels": {
+                "alertname": "TestAlert",
+                "instance": "Grafana",
+                "phoneNumbers": "1111111111"
+            },
+            "annotations": {
+                "message": "TEST TEST TEST",
+                "summary": "Notification test"
+            },
+            "startsAt": "2025-04-14T14:00:17.850296791+02:00",
+            "endsAt": "0001-01-01T00:00:00Z",
+            "generatorURL": "",
+            "fingerprint": "b2e446a25d7acb2a",
+            "silenceURL": "xxx",
+            "dashboardURL": "",
+            "panelURL": "",
+            "values": null,
+            "valueString": "[ metric='foo' labels={instance=bar} value=10 ]"
+        }
+    ],
+    "groupLabels": {
+        "alertname": "TestAlert",
+        "instance": "Grafana",
+        "phoneNumbers": "111111111"
+    },
+    "commonLabels": {
+        "alertname": "TestAlert",
+        "instance": "Grafana",
+        "phoneNumbers": "111111111"
+    },
+    "commonAnnotations": {
+        "message": "TEST TEST TEST",
+        "summary": "Notification test"
+    },
+    "externalURL": "https://example.com/",
+    "version": "1",
+    "groupKey": "test-b2e446a25d7acb2a-1744632017",
+    "truncatedAlerts": 0,
+    "orgId": 1,
+    "title": "[FIRING:1] TestAlert Grafana 1111111111 ",
+    "state": "alerting",
+    "message": "xxx"
+}
