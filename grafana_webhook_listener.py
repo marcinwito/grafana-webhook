@@ -16,7 +16,7 @@ ACCESS_LOG_FILE = 'access.log' # File to write access logs
 LOG_JSON_BODY = True # Control logging of the full JSON body
 
 # Command configuration
-SYSTEM_COMMAND = ['dir'] # The base command to execute (list of strings)
+SYSTEM_COMMAND = ['echo'] # The base command to execute (list of strings)
 SYSTEM_COMMAND_ARGS_ORDER = ['phoneNumbers', 'message'] # Order of args to append: 'phoneNumbers', 'message'
 # Example: SYSTEM_COMMAND = ['/path/to/script.sh']
 # Example: SYSTEM_COMMAND_ARGS_ORDER = ['message', 'phoneNumbers']
@@ -62,21 +62,22 @@ def run_system_command(phone_number, message_content, alert_name):
     try:
         # Build the command dynamically based on configuration
         command_base = list(SYSTEM_COMMAND) # Start with a copy of the base command
-        # Map now uses the single phone_number argument
         args_map = {
-            'phoneNumbers': phone_number, # Use the single number passed
+            'phoneNumbers': phone_number,
             'message': message_content
         }
 
         final_command = command_base
         for arg_key in SYSTEM_COMMAND_ARGS_ORDER:
             if arg_key in args_map:
-                # Ensure the argument is converted to string
-                final_command.append(str(args_map[arg_key]))
+                # Convert arg to string (NO EXTRA QUOTES NEEDED for shell=False)
+                arg_value = str(args_map[arg_key])
+                final_command.append(arg_value)
             else:
                 webhook_logger.warning(f"[Thread] Configured argument key '{arg_key}' not found in available data for alert '{alert_name}'. Skipping.")
 
         webhook_logger.info(f"[Thread] Running command for alert '{alert_name}' (Number: {phone_number}): {final_command}")
+        # subprocess.run with shell=False handles arguments containing spaces correctly when passed as list items.
         result = subprocess.run(final_command, capture_output=True, text=True, check=False, shell=False)
 
         webhook_logger.info(f"[Thread] Command for alert '{alert_name}' (Number: {phone_number}) finished with exit code: {result.returncode}")
