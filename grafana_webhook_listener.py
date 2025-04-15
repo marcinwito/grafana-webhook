@@ -139,12 +139,25 @@ def grafana_webhook(request: Request):
                         alert_name = alert.get('labels', {}).get('alertname', f'alert_{i+1}')
                         labels = alert.get('labels', {})
                         annotations = alert.get('annotations', {})
+                        alert_status = alert.get('status', 'unknown').upper() # Get status, default to 'unknown', uppercase
 
                         phone_numbers_val = labels.get('phoneNumbers')
-                        message_content = annotations.get('message')
+                        message_content = annotations.get('message', '') # Default to empty string if missing
 
-                        # Check if both base values exist
-                        if phone_numbers_val is not None and message_content:
+                        # Create status prefix
+                        status_prefix = f"[{alert_status}] "
+                        # Prepend prefix to the message
+                        full_message_with_prefix = status_prefix + message_content
+
+                        # Check if both base values exist (phone number and original message)
+                        if phone_numbers_val is not None and annotations.get('message') is not None:
+                            # Truncate the combined message (prefix + original content) if it's longer than 156 characters
+                            final_message = full_message_with_prefix
+                            original_full_len = len(full_message_with_prefix)
+                            if original_full_len > 156:
+                                final_message = full_message_with_prefix[:156]
+                                webhook_logger.info(f"Alert '{alert_name}': Prefixed message truncated from {original_full_len} to 156 characters.")
+
                             phone_numbers_list = []
                             # Handle different formats for phoneNumbers label
                             if isinstance(phone_numbers_val, str):
@@ -161,7 +174,7 @@ def grafana_webhook(request: Request):
                                 webhook_logger.warning(f"Alert '{alert_name}': phoneNumbers label found but resulted in an empty list after processing ('{phone_numbers_val}'). Skipping command execution.")
                                 continue # Skip to the next alert
 
-                            webhook_logger.info(f"Alert '{alert_name}': Processing phoneNumbers: {phone_numbers_list} and message. Scheduling command execution for each number.")
+                            webhook_logger.info(f"Alert '{alert_name}': Processing phoneNumbers: {phone_numbers_list} and final message (len={len(final_message)}). Scheduling command execution for each number.")
 
                             # Iterate through each phone number and schedule a command
                             for single_phone_number in phone_numbers_list:
@@ -176,13 +189,14 @@ def grafana_webhook(request: Request):
                                     continue # Skip to the next number
 
                                 webhook_logger.info(f"  - Scheduling for number: {phone_number_str}")
-                                d = threads.deferToThread(run_system_command, phone_number_str, message_content, alert_name)
+                                d = threads.deferToThread(run_system_command, phone_number_str, final_message, alert_name)
                                 d.addErrback(lambda f, num=phone_number_str: webhook_logger.error(f"Error in thread execution for number {num}: {f.value}"))
                         else:
                             missing = []
                             if phone_numbers_val is None:
                                 missing.append('phoneNumbers label')
-                            if not message_content:
+                            # Check original message annotation existence
+                            if annotations.get('message') is None:
                                 missing.append('message annotation')
                             webhook_logger.info(f"Alert '{alert_name}': Missing required fields: {', '.join(missing)}. Skipping command execution.")
                 else:
