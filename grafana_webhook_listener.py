@@ -21,6 +21,9 @@ SYSTEM_COMMAND_ARGS_ORDER = ['phoneNumbers', 'message'] # Order of args to appen
 # Example: SYSTEM_COMMAND = ['/path/to/script.sh']
 # Example: SYSTEM_COMMAND_ARGS_ORDER = ['message', 'phoneNumbers']
 
+# Blacklist configuration
+BLACKLISTED_NUMBERS = ["999888777", "555555555"] # List of phone numbers to ignore
+
 # --- End Configuration ---
 
 # --- Main Logging Configuration (Webhooks) ---
@@ -162,11 +165,15 @@ def grafana_webhook(request: Request):
 
                             # Iterate through each phone number and schedule a command
                             for single_phone_number in phone_numbers_list:
-                                # Ensure the number is treated as a string for the command
                                 phone_number_str = str(single_phone_number).strip()
                                 if not phone_number_str:
                                      webhook_logger.warning(f"Alert '{alert_name}': Encountered empty phone number string after processing. Skipping this number.")
                                      continue
+
+                                # Check if the number is blacklisted
+                                if phone_number_str in BLACKLISTED_NUMBERS:
+                                    webhook_logger.info(f"  - Skipping blacklisted number: {phone_number_str}")
+                                    continue # Skip to the next number
 
                                 webhook_logger.info(f"  - Scheduling for number: {phone_number_str}")
                                 d = threads.deferToThread(run_system_command, phone_number_str, message_content, alert_name)
@@ -234,6 +241,11 @@ if __name__ == '__main__':
     webhook_logger.info(f"Server configured to listen on {HOST}:{PORT}, webhook logs in {LOG_FILE}")
     webhook_logger.info(f"Log full JSON body: {LOG_JSON_BODY}")
     webhook_logger.info(f"System command configured: {SYSTEM_COMMAND} with args order: {SYSTEM_COMMAND_ARGS_ORDER}") # Log command config
+    # Log blacklist info
+    if BLACKLISTED_NUMBERS:
+        webhook_logger.info(f"Blacklisted numbers: {BLACKLISTED_NUMBERS}")
+    else:
+        webhook_logger.info("No numbers blacklisted.")
 
     # Get the Klein app resource
     resource = app.resource()
