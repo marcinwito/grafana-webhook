@@ -1,0 +1,26 @@
+- name: Apply templates dynamically from multiple directories
+  hosts: all
+  tasks:
+    - name: Find all template files in subdirectories
+      ansible.builtin.find:
+        paths: "{{ playbook_dir }}/templates/configs"
+        patterns: "*.j2"
+        recurse: yes
+      register: template_files
+      delegate_to: localhost
+
+    - name: Ensure destination directories exist
+      ansible.builtin.file:
+        path: "{{ dest_path }}{{ item.path | dirname | relpath(playbook_dir + '/templates/configs') }}"
+        state: directory
+        mode: '0755'
+      loop: "{{ template_files.files }}"
+      when: template_files.files | length > 0
+
+    - name: Apply templates to destination
+      ansible.builtin.template:
+        src: "{{ item.path }}"
+        dest: "{{ dest_path }}{{ item.path | relpath(playbook_dir + '/templates/configs') | regex_replace('.j2$', '') }}"
+        mode: '0644'
+      loop: "{{ template_files.files }}"
+      when: template_files.files | length > 0
