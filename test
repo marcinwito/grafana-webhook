@@ -1,39 +1,11 @@
-import requests
-import time
-from datetime import datetime
-import logging
-
-# Konfiguracja logowania
-logging.basicConfig(
-    filename='google_connection_log.txt',
-    level=logging.INFO,
-    format='%(asctime)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-
-def check_connection():
-    while True:
-        try:
-            # Testowanie połączenia z timeoutem 5 sekund
-            response = requests.get('https://www.google.com', timeout=5)
-            # Zapis wyniku do logu
-            if response.status_code == 200:
-                logging.info('Połączenie z www.google.com udane')
-            else:
-                logging.info(f'Połączenie z www.google.com nieudane, kod statusu: {response.status_code}')
-        except requests.Timeout:
-            logging.error('Timeout podczas próby połączenia z www.google.com')
-        except requests.ConnectionError:
-            logging.error('Błąd połączenia z www.google.com')
-        except Exception as e:
-            logging.error(f'Inny błąd podczas połączenia z www.google.com: {str(e)}')
-        
-        # Czekaj 1 sekundę przed kolejnym sprawdzeniem
-        time.sleep(1)
-
-if __name__ == "__main__":
-    try:
-        check_connection()
-    except KeyboardInterrupt:
-        print("Zatrzymano skrypt przez użytkownika")
-        logging.info("Skrypt zatrzymany przez użytkownika")
+SELECT 
+    d.datname AS database_name,
+    n.nspname AS schema_name,
+    r.rolname AS role_name,
+    c.relname AS table_name,
+    c.relacl AS privileges
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_roles r ON r.oid = ANY(c.relacl::regrole[])
+JOIN pg_database d ON d.datname = current_database()
+WHERE c.relkind = 'r';
