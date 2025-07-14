@@ -13,3 +13,93 @@ else
   # W przeciwnym razie, węzeł nie jest masterem - zakończ z kodem 1 (błąd)
   exit 1
 fi
+
+
+###
+
+! Configuration File for keepalived
+
+global_defs {
+   # Identyfikator routera - unikalny dla każdego serwera
+   router_id LVS_DEVEL_1
+}
+
+# Definicja skryptu sprawdzającego rolę Patroni
+vrrp_script check_patroni {
+    script "/etc/keepalived/check_patroni_master.sh"
+    interval 2  # Sprawdzaj co 2 sekundy
+    weight 50   # Waga - jeśli skrypt się powiedzie, priorytet wzrośnie o 50
+    fall 2      # Wymagaj 2 porażek, aby uznać skrypt za uszkodzony
+    rise 2      # Wymagaj 2 sukcesów, aby uznać skrypt za działający
+}
+
+vrrp_instance VI_1 {
+    state MASTER             # Stan początkowy - ten serwer będzie próbował być masterem
+    interface ens192         # Zastąp nazwą swojego interfejsu sieciowego
+    virtual_router_id 51     # Identyfikator wirtualnego routera - musi być taki sam na obu serwerach
+    priority 150             # Wyższy priorytet dla tego serwera
+
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass TwojeSilneHaslo # Zmień na bezpieczne hasło, takie samo na obu serwerach
+    }
+
+    virtual_ipaddress {
+        192.168.1.100/24 dev ens192 # Zastąp swoim wirtualnym adresem IP i interfejsem
+    }
+
+    track_script {
+        check_patroni
+    }
+
+    # (Opcjonalnie) Skrypty powiadomień
+    notify_master "/etc/keepalived/notify.sh MASTER"
+    notify_backup "/etc/keepalived/notify.sh BACKUP"
+    notify_fault "/etc/keepalived/notify.sh FAULT"
+}
+
+
+###
+
+! Configuration File for keepalived
+
+global_defs {
+   # Identyfikator routera - unikalny dla każdego serwera
+   router_id LVS_DEVEL_2
+}
+
+# Definicja skryptu sprawdzającego rolę Patroni (taka sama jak na pierwszym serwerze)
+vrrp_script check_patroni {
+    script "/etc/keepalived/check_patroni_master.sh"
+    interval 2
+    weight 50
+    fall 2
+    rise 2
+}
+
+vrrp_instance VI_1 {
+    state BACKUP             # Stan początkowy - ten serwer będzie backupem
+    interface ens192         # Zastąp nazwą swojego interfejsu sieciowego
+    virtual_router_id 51     # Taki sam identyfikator jak na pierwszym serwerze
+    priority 100             # Niższy priorytet
+
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass TwojeSilneHaslo # Takie samo hasło jak na pierwszym serwerze
+    }
+
+    virtual_ipaddress {
+        192.168.1.100/24 dev ens192 # Ten sam wirtualny adres IP
+    }
+
+    track_script {
+        check_patroni
+    }
+
+    # (Opcjonalnie) Skrypty powiadomień
+    notify_master "/etc/keepalived/notify.sh MASTER"
+    notify_backup "/etc/keepalived/notify.sh BACKUP"
+    notify_fault "/etc/keepalived/notify.sh FAULT"
+}
