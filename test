@@ -1,11 +1,15 @@
-SELECT 
-    d.datname AS database_name,
-    n.nspname AS schema_name,
-    r.rolname AS role_name,
-    c.relname AS table_name,
-    c.relacl AS privileges
-FROM pg_class c
-JOIN pg_namespace n ON n.oid = c.relnamespace
-JOIN pg_roles r ON r.oid = ANY(c.relacl::regrole[])
-JOIN pg_database d ON d.datname = current_database()
-WHERE c.relkind = 'r';
+#!/bin/bash
+
+# Adres URL do REST API Patroni na lokalnym hoście
+PATRONI_API_URL="http://localhost:8008/master"
+
+# Wykonaj zapytanie do API i sprawdź kod odpowiedzi HTTP
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${PATRONI_API_URL})
+
+# Jeśli kod odpowiedzi to 200, węzeł jest masterem - zakończ z kodem 0 (sukces)
+if [ "${HTTP_CODE}" -eq 200 ]; then
+  exit 0
+else
+  # W przeciwnym razie, węzeł nie jest masterem - zakończ z kodem 1 (błąd)
+  exit 1
+fi
