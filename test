@@ -1,115 +1,66 @@
-import requests
-import urllib3
-from datetime import datetime
-import csv
+---
+- name: Import custom URLs into ASM
+  hosts: lb
+  connection: local
+  gather_facts: no
 
-# Wyłącz ostrzeżenia SSL
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+  vars:
+    bigip_host: "{{ ansible_host }}"
+    bigip_user: "admin"
+    bigip_pass: "haslo"
+    policy_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    urls_file: "/path/to/urls.json"
 
-# --- KONFIGURACJA ---
-GITLAB_URL = "https://gitlab.example.com"  # adres Twojego Gitlaba
-PRIVATE_TOKEN = "TWÓJ_TOKEN"               # wstaw swój personal access token
-USERNAME = "jankowalski"                   # login użytkownika
-PER_PAGE = 100
-OUTPUT_FILE = "events.csv"
-# ---------------------
+  tasks:
+    - name: Upload urls.json
+      ansible.builtin.uri:
+        url: "https://{{ bigip_host }}/mgmt/shared/file-transfer/uploads/urls.json"
+        method: POST
+        user: "{{ bigip_user }}"
+        password: "{{ bigip_pass }}"
+        force_basic_auth: yes
+        body_format: form-multipart
+        body:
+          file: "{{ lookup('file', urls_file) }}"
+        validate_certs: no
 
-headers = {"PRIVATE-TOKEN": PRIVATE_TOKEN}
+    - name: Start import task
+      ansible.builtin.uri:
+        url: "https://{{ bigip_host }}/mgmt/tm/asm/tasks/import-policy"
+        method: POST
+        user: "{{ bigip_user }}"
+        password: "{{ bigip_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body:
+          filename: "urls.json"
+          policyReference:
+            link: "https://localhost/mgmt/tm/asm/policies/{{ policy_id }}"
+        validate_certs: no
+      register: import_task
 
-def get_user_id(username: str) -> int:
-    """Znajdź ID użytkownika po jego username"""
-    url = f"{GITLAB_URL}/api/v4/users"
-    params = {"username": username}
-    resp = requests.get(url, headers=headers, params=params, verify=False)
-    resp.raise_for_status()
-    data = resp.json()
-    if not data:
-        raise ValueError(f"Nie znaleziono użytkownika {username}")
-    return data[0]["id"]
+    - name: Wait for import to finish
+      ansible.builtin.uri:
+        url: "https://{{ bigip_host }}/mgmt/tm/asm/tasks/import-policy/{{ import_task.json.id }}"
+        method: GET
+        user: "{{ bigip_user }}"
+        password: "{{ bigip_pass }}"
+        force_basic_auth: yes
+        validate_certs: no
+      register: import_status
+      until: import_status.json.status == "COMPLETED"
+      retries: 30
+      delay: 10
 
-def get_project_name(project_id: int, cache: dict) -> str:
-    """Pobierz nazwę projektu na podstawie jego ID, z prostym cache"""
-    if project_id in cache:
-        return cache[project_id]
-    url = f"{GITLAB_URL}/api/v4/projects/{project_id}"
-    resp = requests.get(url, headers=headers, verify=False)
-    if resp.status_code == 200:
-        name = resp.json().get("path_with_namespace", f"Projekt {project_id}")
-    else:
-        name = f"Projekt {project_id}"
-    cache[project_id] = name
-    return name
-
-def get_all_events(user_id: int):
-    """Pobierz całą historię aktywności użytkownika"""
-    all_events = []
-    page = 1
-    while True:
-        url = f"{GITLAB_URL}/api/v4/users/{user_id}/events"
-        params = {"per_page": PER_PAGE, "page": page}
-        resp = requests.get(url, headers=headers, params=params, verify=False)
-        resp.raise_for_status()
-        events = resp.json()
-        if not events:
-            break
-        all_events.extend(events)
-        print(f"Pobrano stronę {page}, łącznie {len(all_events)} zdarzeń")
-        page += 1
-    return all_events
-
-def process_events(events, project_cache):
-    """Przetwórz zdarzenia do czytelnej listy"""
-    processed = []
-    for ev in events:
-        action = ev.get("action_name")
-        created = ev.get("created_at")
-        dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-        project_id = ev.get("project_id")
-        project_name = get_project_name(project_id, project_cache) if project_id else "Brak projektu"
-
-        description = ""
-        if action == "pushed":
-            description = f"Commit w projekcie: {project_name}"
-        elif action in ("opened", "merged", "closed") and ev.get("target_type") == "MergeRequest":
-            mr_title = ev.get("target_title", "(brak tytułu)")
-            description = f"Merge Request {action} w projekcie: {project_name} → \"{mr_title}\""
-        else:
-            target_type = ev.get("target_type", "")
-            target_title = ev.get("target_title", "")
-            description = f"{action} {target_type} w projekcie: {project_name} → \"{target_title}\""
-
-        processed.append({
-            "date": dt.strftime("%Y-%m-%d %H:%M"),
-            "action": action,
-            "project": project_name,
-            "description": description
-        })
-    return processed
-
-def save_to_csv(events, filename):
-    """Zapisz zdarzenia do pliku CSV"""
-    with open(filename, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["date", "action", "project", "description"])
-        writer.writeheader()
-        writer.writerows(events)
-    print(f"\nZapisano zdarzenia do pliku: {filename}")
-
-def main():
-    user_id = get_user_id(USERNAME)
-    print(f"Aktywność użytkownika: {USERNAME} (ID {user_id})\n")
-
-    events = get_all_events(user_id)
-    print(f"Łącznie zdarzeń: {len(events)}\n")
-
-    project_cache = {}
-    processed = process_events(events, project_cache)
-
-    # Wypisz na ekran
-    for ev in processed:
-        print(f"[{ev['date']}] {ev['description']}")
-
-    # Zapisz do pliku
-    save_to_csv(processed, OUTPUT_FILE)
-
-if __name__ == "__main__":
-    main()
+    - name: Apply policy
+      ansible.builtin.uri:
+        url: "https://{{ bigip_host }}/mgmt/tm/asm/tasks/apply-policy"
+        method: POST
+        user: "{{ bigip_user }}"
+        password: "{{ bigip_pass }}"
+        force_basic_auth: yes
+        body_format: json
+        body:
+          policyReference:
+            link: "https://localhost/mgmt/tm/asm/policies/{{ policy_id }}"
+        validate_certs: no
