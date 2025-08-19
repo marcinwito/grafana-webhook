@@ -1,105 +1,57 @@
-#!/bin/bash
+import requests
+import urllib3
+import json
 
-# Adres URL do REST API Patroni na lokalnym hoście
-PATRONI_API_URL="http://localhost:8008/master"
+# Wyłącz ostrzeżenia SSL
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Wykonaj zapytanie do API i sprawdź kod odpowiedzi HTTP
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${PATRONI_API_URL})
+# --- KONFIGURACJA ---
+GITLAB_URL = "https://gitlab.example.com"  # adres Twojego Gitlaba
+PRIVATE_TOKEN = "TWÓJ_TOKEN"               # wstaw swój personal access token
+USERNAME = "jankowalski"                   # login użytkownika
+OUTPUT_FILE = "events.json"
+PER_PAGE = 100
+# ---------------------
 
-# Jeśli kod odpowiedzi to 200, węzeł jest masterem - zakończ z kodem 0 (sukces)
-if [ "${HTTP_CODE}" -eq 200 ]; then
-  exit 0
-else
-  # W przeciwnym razie, węzeł nie jest masterem - zakończ z kodem 1 (błąd)
-  exit 1
-fi
+headers = {"PRIVATE-TOKEN": PRIVATE_TOKEN}
 
+def get_user_id(username: str) -> int:
+    """Znajdź ID użytkownika po jego username"""
+    url = f"{GITLAB_URL}/api/v4/users"
+    params = {"username": username}
+    resp = requests.get(url, headers=headers, params=params, verify=False)
+    resp.raise_for_status()
+    data = resp.json()
+    if not data:
+        raise ValueError(f"Nie znaleziono użytkownika {username}")
+    return data[0]["id"]
 
-###
+def get_all_events(user_id: int):
+    """Pobierz całą historię aktywności użytkownika"""
+    all_events = []
+    page = 1
+    while True:
+        url = f"{GITLAB_URL}/api/v4/users/{user_id}/events"
+        params = {"per_page": PER_PAGE, "page": page}
+        resp = requests.get(url, headers=headers, params=params, verify=False)
+        resp.raise_for_status()
+        events = resp.json()
+        if not events:
+            break
+        all_events.extend(events)
+        print(f"Pobrano stronę {page}, łącznie {len(all_events)} zdarzeń")
+        page += 1
+    return all_events
 
-! Configuration File for keepalived
+def main():
+    user_id = get_user_id(USERNAME)
+    print(f"ID użytkownika {USERNAME}: {user_id}")
+    events = get_all_events(user_id)
 
-global_defs {
-   # Identyfikator routera - unikalny dla każdego serwera
-   router_id LVS_DEVEL_1
-}
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(events, f, ensure_ascii=False, indent=2)
 
-# Definicja skryptu sprawdzającego rolę Patroni
-vrrp_script check_patroni {
-    script "/etc/keepalived/check_patroni_master.sh"
-    interval 2  # Sprawdzaj co 2 sekundy
-    weight 50   # Waga - jeśli skrypt się powiedzie, priorytet wzrośnie o 50
-    fall 2      # Wymagaj 2 porażek, aby uznać skrypt za uszkodzony
-    rise 2      # Wymagaj 2 sukcesów, aby uznać skrypt za działający
-}
+    print(f"Zapisano {len(events)} zdarzeń do pliku {OUTPUT_FILE}")
 
-vrrp_instance VI_1 {
-    state MASTER             # Stan początkowy - ten serwer będzie próbował być masterem
-    interface ens192         # Zastąp nazwą swojego interfejsu sieciowego
-    virtual_router_id 51     # Identyfikator wirtualnego routera - musi być taki sam na obu serwerach
-    priority 150             # Wyższy priorytet dla tego serwera
-
-    advert_int 1
-    authentication {
-        auth_type PASS
-        auth_pass TwojeSilneHaslo # Zmień na bezpieczne hasło, takie samo na obu serwerach
-    }
-
-    virtual_ipaddress {
-        192.168.1.100/24 dev ens192 # Zastąp swoim wirtualnym adresem IP i interfejsem
-    }
-
-    track_script {
-        check_patroni
-    }
-
-    # (Opcjonalnie) Skrypty powiadomień
-    notify_master "/etc/keepalived/notify.sh MASTER"
-    notify_backup "/etc/keepalived/notify.sh BACKUP"
-    notify_fault "/etc/keepalived/notify.sh FAULT"
-}
-
-
-###
-
-! Configuration File for keepalived
-
-global_defs {
-   # Identyfikator routera - unikalny dla każdego serwera
-   router_id LVS_DEVEL_2
-}
-
-# Definicja skryptu sprawdzającego rolę Patroni (taka sama jak na pierwszym serwerze)
-vrrp_script check_patroni {
-    script "/etc/keepalived/check_patroni_master.sh"
-    interval 2
-    weight 50
-    fall 2
-    rise 2
-}
-
-vrrp_instance VI_1 {
-    state BACKUP             # Stan początkowy - ten serwer będzie backupem
-    interface ens192         # Zastąp nazwą swojego interfejsu sieciowego
-    virtual_router_id 51     # Taki sam identyfikator jak na pierwszym serwerze
-    priority 100             # Niższy priorytet
-
-    advert_int 1
-    authentication {
-        auth_type PASS
-        auth_pass TwojeSilneHaslo # Takie samo hasło jak na pierwszym serwerze
-    }
-
-    virtual_ipaddress {
-        192.168.1.100/24 dev ens192 # Ten sam wirtualny adres IP
-    }
-
-    track_script {
-        check_patroni
-    }
-
-    # (Opcjonalnie) Skrypty powiadomień
-    notify_master "/etc/keepalived/notify.sh MASTER"
-    notify_backup "/etc/keepalived/notify.sh BACKUP"
-    notify_fault "/etc/keepalived/notify.sh FAULT"
-}
+if __name__ == "__main__":
+    main()
