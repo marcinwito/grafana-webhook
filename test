@@ -1,6 +1,6 @@
 import requests
 import urllib3
-import json
+from datetime import datetime
 
 # Wyłącz ostrzeżenia SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -9,7 +9,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 GITLAB_URL = "https://gitlab.example.com"  # adres Twojego Gitlaba
 PRIVATE_TOKEN = "TWÓJ_TOKEN"               # wstaw swój personal access token
 USERNAME = "jankowalski"                   # login użytkownika
-OUTPUT_FILE = "events.json"
 PER_PAGE = 100
 # ---------------------
 
@@ -26,6 +25,19 @@ def get_user_id(username: str) -> int:
         raise ValueError(f"Nie znaleziono użytkownika {username}")
     return data[0]["id"]
 
+def get_project_name(project_id: int, cache: dict) -> str:
+    """Pobierz nazwę projektu na podstawie jego ID, z prostym cache"""
+    if project_id in cache:
+        return cache[project_id]
+    url = f"{GITLAB_URL}/api/v4/projects/{project_id}"
+    resp = requests.get(url, headers=headers, verify=False)
+    if resp.status_code == 200:
+        name = resp.json().get("path_with_namespace", f"Projekt {project_id}")
+    else:
+        name = f"Projekt {project_id}"
+    cache[project_id] = name
+    return name
+
 def get_all_events(user_id: int):
     """Pobierz całą historię aktywności użytkownika"""
     all_events = []
@@ -39,19 +51,38 @@ def get_all_events(user_id: int):
         if not events:
             break
         all_events.extend(events)
-        print(f"Pobrano stronę {page}, łącznie {len(all_events)} zdarzeń")
         page += 1
     return all_events
 
+def pretty_print(events, project_cache):
+    """Ładnie wypisz aktywności użytkownika"""
+    for ev in events:
+        action = ev.get("action_name")
+        created = ev.get("created_at")
+        dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+        project_id = ev.get("project_id")
+        project_name = get_project_name(project_id, project_cache) if project_id else "Brak projektu"
+
+        if action == "pushed":
+            print(f"[{dt:%Y-%m-%d %H:%M}] Commit w projekcie: {project_name}")
+        elif action in ("opened", "merged", "closed") and ev.get("target_type") == "MergeRequest":
+            mr_title = ev.get("target_title", "(brak tytułu)")
+            print(f"[{dt:%Y-%m-%d %H:%M}] Merge Request {action} w projekcie: {project_name} → \"{mr_title}\"")
+        else:
+            # inne aktywności zostawiamy w formie ogólnej
+            target_type = ev.get("target_type", "")
+            target_title = ev.get("target_title", "")
+            print(f"[{dt:%Y-%m-%d %H:%M}] {action} {target_type} w projekcie: {project_name} → \"{target_title}\"")
+
 def main():
     user_id = get_user_id(USERNAME)
-    print(f"ID użytkownika {USERNAME}: {user_id}")
+    print(f"Aktywność użytkownika: {USERNAME} (ID {user_id})\n")
+
     events = get_all_events(user_id)
+    print(f"Łącznie zdarzeń: {len(events)}\n")
 
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(events, f, ensure_ascii=False, indent=2)
-
-    print(f"Zapisano {len(events)} zdarzeń do pliku {OUTPUT_FILE}")
+    project_cache = {}
+    pretty_print(events, project_cache)
 
 if __name__ == "__main__":
     main()
