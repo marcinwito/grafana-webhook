@@ -1,6 +1,7 @@
 import requests
 import urllib3
 from datetime import datetime
+import csv
 
 # Wyłącz ostrzeżenia SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -10,6 +11,7 @@ GITLAB_URL = "https://gitlab.example.com"  # adres Twojego Gitlaba
 PRIVATE_TOKEN = "TWÓJ_TOKEN"               # wstaw swój personal access token
 USERNAME = "jankowalski"                   # login użytkownika
 PER_PAGE = 100
+OUTPUT_FILE = "events.csv"
 # ---------------------
 
 headers = {"PRIVATE-TOKEN": PRIVATE_TOKEN}
@@ -51,11 +53,13 @@ def get_all_events(user_id: int):
         if not events:
             break
         all_events.extend(events)
+        print(f"Pobrano stronę {page}, łącznie {len(all_events)} zdarzeń")
         page += 1
     return all_events
 
-def pretty_print(events, project_cache):
-    """Ładnie wypisz aktywności użytkownika"""
+def process_events(events, project_cache):
+    """Przetwórz zdarzenia do czytelnej listy"""
+    processed = []
     for ev in events:
         action = ev.get("action_name")
         created = ev.get("created_at")
@@ -63,16 +67,32 @@ def pretty_print(events, project_cache):
         project_id = ev.get("project_id")
         project_name = get_project_name(project_id, project_cache) if project_id else "Brak projektu"
 
+        description = ""
         if action == "pushed":
-            print(f"[{dt:%Y-%m-%d %H:%M}] Commit w projekcie: {project_name}")
+            description = f"Commit w projekcie: {project_name}"
         elif action in ("opened", "merged", "closed") and ev.get("target_type") == "MergeRequest":
             mr_title = ev.get("target_title", "(brak tytułu)")
-            print(f"[{dt:%Y-%m-%d %H:%M}] Merge Request {action} w projekcie: {project_name} → \"{mr_title}\"")
+            description = f"Merge Request {action} w projekcie: {project_name} → \"{mr_title}\""
         else:
-            # inne aktywności zostawiamy w formie ogólnej
             target_type = ev.get("target_type", "")
             target_title = ev.get("target_title", "")
-            print(f"[{dt:%Y-%m-%d %H:%M}] {action} {target_type} w projekcie: {project_name} → \"{target_title}\"")
+            description = f"{action} {target_type} w projekcie: {project_name} → \"{target_title}\""
+
+        processed.append({
+            "date": dt.strftime("%Y-%m-%d %H:%M"),
+            "action": action,
+            "project": project_name,
+            "description": description
+        })
+    return processed
+
+def save_to_csv(events, filename):
+    """Zapisz zdarzenia do pliku CSV"""
+    with open(filename, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["date", "action", "project", "description"])
+        writer.writeheader()
+        writer.writerows(events)
+    print(f"\nZapisano zdarzenia do pliku: {filename}")
 
 def main():
     user_id = get_user_id(USERNAME)
@@ -82,7 +102,14 @@ def main():
     print(f"Łącznie zdarzeń: {len(events)}\n")
 
     project_cache = {}
-    pretty_print(events, project_cache)
+    processed = process_events(events, project_cache)
+
+    # Wypisz na ekran
+    for ev in processed:
+        print(f"[{ev['date']}] {ev['description']}")
+
+    # Zapisz do pliku
+    save_to_csv(processed, OUTPUT_FILE)
 
 if __name__ == "__main__":
     main()
